@@ -1,0 +1,76 @@
+# 期货消息聚合推送 - 配置示例
+# 复制本文件为 config.yaml 后按需修改。config.yaml 不会被覆盖。
+
+# ---------------- 轮询节奏（试运行期可随意调，改完重启生效） ----------------
+# 加急(行情+交易所通知)与常规汇总解耦：加急全天候高频，汇总按时段控 LLM 额度。
+schedule:
+  urgent_interval: 60            # 加急抓取间隔(秒)，全天候。想更快/更慢改这里
+  active_start: "08:30"          # 活跃时段开始
+  active_end: "23:00"            # 活跃时段结束
+  active_digest_interval: 900    # 活跃时段汇总间隔(秒)：15 分钟
+  off_digest_interval: 14400     # 夜间(23:00-8:30)/周末汇总间隔(秒)：4 小时
+
+# ---------------- 加急直通道（命中即绕过 LLM 立即单独推送 🚨） ----------------
+# 规则：文中先命中交易所/品种名，再命中动作词(公告)或突变词(行情)即加急。
+# 词表在 keywords.yaml，可随时编辑。这里只放开关和临时追加词。
+urgent:
+  enabled: true
+  extra_names: []
+  extra_actions: []
+  extra_moves: []
+  exclude_markers: []   # 行情加急额外排除词（股票/外汇类）
+
+# ---------------- 消息来源 ----------------
+sources:
+  cls:                 # 财联社电报
+    enabled: true
+    rn: 50             # 每次拉取条数（接口上限 50，不支持游标翻页）
+    only_important: false   # true 时只拉「重要(红色)」电报
+  wallstreetcn:        # 华尔街见闻 快讯
+    enabled: true
+    limit: 50          # 每页条数（接口上限 100）
+    max_pages: 10      # 单轮最多翻几页：支持游标，会一直往前翻到上次见过的为止
+
+# ---------------- 规则预筛（省 LLM 额度的关键） ----------------
+prefilter:
+  # 预筛关键词在 keywords.yaml 的 prefilter 段（可随时编辑）。这里留空即用那份。
+  keywords: []
+  # 来源标记为「重要」的条目即使不命中关键词也保留
+  keep_source_important: true
+  # 相似消息聚类阈值（0~1）。越高越严格(只合并几乎相同的)，越低越激进(更容易合并)。
+  # 同一事件的多条快讯会被合成一组、只把代表喂给 LLM，省调用。建议 0.4~0.5。
+  similarity_threshold: 0.45
+
+# ---------------- LLM（Claude / Codex 订阅 CLI 二选一） ----------------
+llm:
+  # 当前使用的提炼器：codex 或 claude。改完重启生效。
+  provider: codex
+  # 单次提炼最多塞多少条候选，控制单次调用大小与额度消耗。
+  batch_size: 15
+  # 调用超时（秒）
+  timeout_seconds: 180
+
+  # 原 Claude 版本完整保留；provider 改为 claude 即可切回。
+  claude:
+    command: claude
+    model: ""       # 留空使用 Claude CLI 当前默认模型
+
+  # Codex 使用 `codex login` 登录的 ChatGPT/Codex 订阅。
+  # 程序会强制 ephemeral、关闭记忆读写，并在一次性空目录中只读运行。
+  codex:
+    command: codex
+    model: ""       # 留空使用 Codex CLI 默认模型
+
+# ---------------- 飞书推送 ----------------
+feishu:
+  # 飞书群 -> 设置 -> 群机器人 -> 添加「自定义机器人」拿到的 webhook 地址
+  webhook_url: ""
+  # 若机器人开启了「签名校验」，把密钥填这里；没开就留空
+  secret: ""
+
+# ---------------- 存储 ----------------
+storage:
+  db_path: data/seen.db
+  # 自动滚动清理：删除入库超过该天数的旧记录（仅控磁盘体积，不影响去重）。
+  # 设 0 则永不清理。去重只需保留几小时，30 天远超所需、很安全。
+  retention_days: 30
