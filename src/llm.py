@@ -63,7 +63,9 @@ class LLMDigester(BaseDigester):
             return None
 
         if proc.returncode != 0:
-            log.error("claude 退出码 %s，stderr: %s", proc.returncode, (proc.stderr or "")[:300])
+            # Claude CLI 的认证错误会写到 stdout，而不是 stderr。
+            detail = (proc.stderr or proc.stdout or "").strip()[:500]
+            log.error("claude 退出码 %s：%s", proc.returncode, detail or "未返回错误详情")
             return None
         return proc.stdout
 

@@ -69,6 +69,21 @@ python run.py            # 持续轮询
 python run.py --once     # 只跑一轮，方便测试
 ```
 
+### Windows 一键启动
+
+直接双击项目根目录下的 `start_message_agent.bat`。脚本会自动切换到项目目录，
+依次查找项目虚拟环境、Anaconda/Miniconda 和系统 Python，并在缺少依赖时按
+`requirements.txt` 安装，然后启动持续轮询。
+
+也可以在命令提示符中使用：
+
+```bat
+start_message_agent.bat --check   rem 只检查环境，不采集或推送
+start_message_agent.bat --once    rem 只运行一轮
+```
+
+持续运行时按 `Ctrl+C` 停止。程序异常退出后窗口会保留，便于查看错误信息。
+
 ## 轮询节奏（试运行期随意调，改完重启生效）
 
 全在 `config.yaml` 的 `schedule` 段，纯数字：

@@ -42,6 +42,13 @@ def _resolve_command(cmd: str) -> str:
     cmd = os.path.expandvars(os.path.expanduser(cmd.strip()))
     if os.path.splitext(cmd)[1] or os.path.dirname(cmd):
         return shutil.which(cmd) or cmd
+    # 项目依赖 --strict-config / --ignore-user-config 等较新的安全参数。
+    # Windows 的 PATH 里可能残留不支持这些参数的旧版 npm Codex；VS Code
+    # 扩展随附版本与当前登录状态同步，因此裸命令 codex 优先使用它。
+    if os.name == "nt" and cmd.lower() == "codex":
+        bundled = _find_vscode_codex()
+        if bundled:
+            return bundled
     if os.name == "nt":
         for ext in (".cmd", ".exe", ".bat"):
             found = shutil.which(cmd + ext)
@@ -95,8 +102,18 @@ class CodexDigester(BaseDigester):
 
     def _call_model(self, prompt: str) -> str | None:
         try:
-            # 在一次性空目录中运行，避免 Codex 自动读取项目文件或项目级说明。
-            with tempfile.TemporaryDirectory(prefix="message-agent-codex-") as workdir:
+            # 某些 Windows 安全策略禁止从系统 TEMP 目录启动程序。将一次性
+            # 空目录放到项目数据目录中，仍保持每次调用隔离且调用后自动删除。
+            runtime_root = Path(
+                os.environ.get(
+                    "MESSAGE_AGENT_RUNTIME_DIR",
+                    str(Path.cwd() / "data" / ".codex-runtime"),
+                )
+            )
+            runtime_root.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(
+                prefix="message-agent-codex-", dir=runtime_root
+            ) as workdir:
                 proc = subprocess.run(
                     self._command(),
                     input=prompt,
@@ -118,6 +135,7 @@ class CodexDigester(BaseDigester):
             return None
 
         if proc.returncode != 0:
-            log.error("codex 退出码 %s，stderr: %s", proc.returncode, (proc.stderr or "")[:500])
+            detail = (proc.stderr or proc.stdout or "").strip()[:500]
+            log.error("codex 退出码 %s：%s", proc.returncode, detail or "未返回错误详情")
             return None
         return proc.stdout
